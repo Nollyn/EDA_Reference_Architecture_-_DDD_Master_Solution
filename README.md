@@ -16,6 +16,11 @@ La solución implementa una separación física estricta de proyectos para garan
 
 ```
 EDA-Reference-Portfolio/
+├── platform/                         # Paquetes Compartidos de Plataforma (Platform BuildingBlocks)
+│   ├── BuildingBlocks.Observability/ # OpenTelemetry (Traces/Metrics), W3C context, CorrelationId
+│   ├── BuildingBlocks.Resilience/    # Polly v8 HTTP resilience (Retry jitter, Circuit Breaker, Timeouts)
+│   └── BuildingBlocks.Security/      # JWT Bearer / OAuth2 (Azure Entra ID / OIDC), DevMode bypass
+│
 ├── src/
 │   ├── OrderService.Domain/          # Núcleo puro de negocio (Cero dependencias externas)
 │   │   ├── Aggregates/               # Order (Aggregate Root)
@@ -243,3 +248,115 @@ La migración de un módulo crítico de pedidos desde un monolito legado hacia e
    - Gracias a la **propagación W3C de OpenTelemetry** y la instrumentación continua hacia Grafana Tempo, los ingenieros de guardia pueden correlacionar una alerta de error en segundos inspeccionando la traza distribuida exacta entre la API, el Outbox y el Worker.
    - El patrón **Inbox + DLQ** asegura que ningún mensaje se pierda: ante caídas de dependencias downstream, los mensajes se retienen en la cola de reintentos o DLQ y pueden reinyectarse automáticamente una vez restablecido el servicio, reduciendo el MTTR de horas a minutos sin pérdida de datos.
    - **Gobernanza por Error Budget:** Si el SLO de disponibilidad ($99.9\%$) consume más del $20\%$ de su Error Budget en una semana, las alertas de Prometheus congelan automáticamente los despliegues de nuevas funcionalidades no críticas para priorizar la estabilidad operativa.
+
+---
+
+## 6. Paquetes Compartidos de Plataforma (Platform BuildingBlocks)
+
+Para garantizar consistencia transversal y evitar la duplicación de código en la arquitectura de microservicios, la solución incorpora una suite de **Platform BuildingBlocks** en `platform/`, empaquetables como paquetes NuGet internos con versionado semántico y documentación XML:
+
+### A. `platform/BuildingBlocks.Observability`
+- **Propósito:** Estandarización de observabilidad OpenTelemetry (Traces, Metrics y Logs) para APIs y Workers.
+- **Capacidades:**
+  - Extensión `services.AddPlatformObservability(IConfiguration, defaultServiceName, configureOptions)`.
+  - Instrumentación automática de ASP.NET Core, HttpClient y Npgsql con captura de excepciones.
+  - Exportador OTLP hacia Grafana Tempo / OpenTelemetry Collector (`http://localhost:4317`).
+  - Middleware de correlación `CorrelationIdMiddleware` (`X-Correlation-Id`) integrado con `Activity.Current` y Logging Scopes.
+  - Utilidad W3C `TraceContextPropagator` para inyección y extracción de `traceparent` y `tracestate` en brokers de mensajería (RabbitMQ/Service Bus).
+
+### B. `platform/BuildingBlocks.Resilience`
+- **Propósito:** Políticas estándar de resiliencia HTTP de grado plataforma basadas en **`Microsoft.Extensions.Http.Resilience` (Polly v8)**.
+- **Capacidades:**
+  - Extensión `clientBuilder.AddPlatformHttpResilience(IConfiguration?, policySection?, configureOptions?)`.
+  - **Retry con Exponential Jitter:** Mitiga el efecto *thundering herd* en dependencias externas.
+  - **Circuit Breaker:** Apertura automática ante fallos sostenidos (FailureRatio: 50%, SamplingDuration: 30s, BreakDuration: 15s).
+  - **Timeouts:** Timeout por intento (3s) y Timeout total de operación (10s).
+  - Configuración desacoplada en `appsettings.json` mediante la sección `Resilience:Http`.
+
+### C. `platform/BuildingBlocks.Security`
+- **Propósito:** Autenticación y Autorización empresarial lista para JWT Bearer / OAuth2 (Azure Entra ID / OIDC).
+- **Capacidades:**
+  - Extensión `services.AddPlatformAuthentication(IConfiguration, configureOptions?)` y `app.UsePlatformSecurity()`.
+  - Validación de tokens OpenID Connect, Audience, Issuer y Authority.
+  - Políticas de autorización predeterminadas (`PlatformPolicies.PlatformAdmin`, `ServiceOperator`, `Reader`, `Writer`).
+  - **Modo de Desarrollo (`PlatformSecurity:EnableDevMode = true`):** Proporciona un esquema de identidad local (`DevAuthenticationHandler`) para permitir la ejecución de pruebas y exploración en Swagger UI sin bloquear a los desarrolladores locales.
+
+---
+
+## 7. Private Package Registries y Supply Chain Governance
+
+### Mitigación de Ataques de Dependency Confusion
+La raíz de la solución incluye un archivo `NuGet.config` con **Package Source Mapping** explícito (`<packageSourceMapping>`). Esto garantiza que los paquetes de plataforma internos nunca puedan ser secuestrados desde el registro público `nuget.org` (*namespace squatting*):
+
+```xml
+<packageSourceMapping>
+  <packageSource key="github-packages">
+    <package pattern="BuildingBlocks.*" />
+    <package pattern="Platform.*" />
+    <package pattern="OrderService.*" />
+  </packageSource>
+  <packageSource key="nuget.org">
+    <package pattern="Microsoft.*" />
+    <package pattern="System.*" />
+    <package pattern="OpenTelemetry*" />
+    <package pattern="Npgsql*" />
+    <package pattern="RabbitMQ.*" />
+    <package pattern="Polly*" />
+    <!-- namespaces públicos autorizados -->
+  </packageSource>
+</packageSourceMapping>
+```
+
+### Publicación Automatizada a Registro Privado
+El workflow `.github/workflows/platform-packages-publish.yml` empaqueta y publica automáticamente los 3 proyectos de plataforma hacia **GitHub Packages** (`https://nuget.pkg.github.com/`) al crear tags `platform-v*` (ej. `platform-v1.0.0`):
+- `BuildingBlocks.Observability.1.0.0.nupkg`
+- `BuildingBlocks.Resilience.1.0.0.nupkg`
+- `BuildingBlocks.Security.1.0.0.nupkg`
+
+---
+
+## 8. Pipeline de DevSecOps, SBOM (CycloneDX) y Revisión Agéntica Iterativa
+
+El pipeline `.github/workflows/ai-governance-review.yml` automatiza la verificación de calidad, seguridad y trazabilidad en cada Pull Request mediante una estrategia en dos fases:
+
+```
+[ Pull Request ]
+       │
+       ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│ Fase 1: Hard Gates de Calidad, SAST, Vulnerabilidades & SBOM           │
+│ ├─ Escaneo Zero-Trust de Secretos (src/ y platform/)                  │
+│ ├─ Auditoría de Vulnerabilidades NuGet (--vulnerable --transitive)    │
+│ ├─ SAST .NET con TreatWarningsAsErrors=true                            │
+│ ├─ Generación de SBOM CycloneDX (sbom.cdx.json) -> sbom-artifact       │
+│ └─ Ejecución de Tests Unitarios (dotnet test)                          │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │ (Pasa en Verde)
+                                    ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│ Fase 2: Revisión Agéntica Iterativa (Evaluator-Optimizer Loop)         │
+│ ├─ Motor IA: Anthropic Claude (claude-3-7-sonnet-latest)               │
+│ ├─ Reviewer Agent: Audita Hexagonal, DDD, Concurrencia, Outbox, Sec    │
+│ ├─ Fixer Agent: Aplica auto-correcciones (máx. 3 iteraciones)          │
+│ ├─ Verificación Real: dotnet build + dotnet test (rollback si falla)  │
+│ ├─ Commit con identidad 'NEAI-CodeReview-Bot'                          │
+│ └─ Reporte Markdown publicado como comentario en la PR                 │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │
+                                    ▼
+       ┌──────────────────────────────────────────────────────────┐
+       │ 🛑 CONTROL HUMANO OBLIGATORIO: Auto-merge DESHABILITADO   │
+       │ Aprobación final requerida por Platform / Lead Engineer  │
+       └──────────────────────────────────────────────────────────┘
+```
+
+1. **Fase 1 (Hard Gates):**
+   - **Secret Scanning Zero-Trust:** Bloquea la PR si detecta tokens, claves privadas o cadenas de conexión en el código fuente.
+   - **Vulnerability Scanning:** Ejecuta `dotnet list package --vulnerable --include-transitive`.
+   - **SBOM CycloneDX:** Genera `sbom.cdx.json` sobre toda la solución y lo adjunta como artefacto oficial de cumplimiento normativo (`sbom-artifact`).
+2. **Fase 2 (Revisión Agéntica Evaluator-Optimizer):**
+   - El script `.github/scripts/ai_code_reviewer.py` ejecuta un bucle de hasta 3 iteraciones donde un agente **Reviewer** detecta problemas y un agente **Fixer** genera correcciones.
+   - Cada corrección es verificada ejecutando `dotnet build --warnaserror` y `dotnet test`. Si la compilación o los tests fallan, la corrección se revierte de inmediato de forma segura.
+   - Si quedan puntos no resueltos tras 3 iteraciones, se genera un informe detallado con las causas y las sugerencias concretas para el desarrollador.
+3. **Gobernanza y Control Humano Obligatorio:**
+   - La IA nunca aprueba ni fusiona Pull Requests por sí misma. El auto-merge está estrictamente deshabilitado para garantizar la responsabilidad y supervisión técnica humana.

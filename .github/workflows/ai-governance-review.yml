@@ -1,0 +1,165 @@
+name: AI Governance, Supply Chain Security & SBOM Review
+
+on:
+  pull_request:
+    branches:
+      - main
+      - master
+      - develop
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  checks: write
+
+jobs:
+  phase-1-hard-gates:
+    name: Phase 1 - Hard Gates, SAST, Vulnerabilities & SBOM
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore Solution Dependencies
+        run: dotnet restore EDA-Reference-Portfolio.slnx
+
+      - name: Zero-Trust Hardcoded Secret Scan
+        shell: bash
+        run: |
+          echo "Scanning src/ and platform/ for hardcoded secrets, tokens, or private keys..."
+          SUSPICIOUS_PATTERNS="(password|secret|apikey|token|private_key)\s*=\s*[\"'][a-zA-Z0-9_\-\.]{12,}[\"']|Endpoint=sb://.+;SharedAccessKey="
+          
+          if grep -E -r -i -n --exclude-dir=bin --exclude-dir=obj "$SUSPICIOUS_PATTERNS" src/ platform/; then
+            echo "::error::Zero-Trust Secret Scan failed: Hardcoded credentials or access keys detected!"
+            exit 1
+          fi
+          echo "Zero-Trust Secret Scan passed: 0 credentials found in source directories."
+
+      - name: NuGet Dependency Vulnerability Scan
+        shell: bash
+        run: |
+          echo "Scanning solution packages for known transitive and direct security vulnerabilities..."
+          dotnet list EDA-Reference-Portfolio.slnx package --vulnerable --include-transitive
+
+      - name: .NET SAST & Code Style Enforcement (TreatWarningsAsErrors)
+        run: dotnet build EDA-Reference-Portfolio.slnx -c Release --warnaserror
+
+      - name: Generate CycloneDX SBOM (Software Bill of Materials)
+        shell: bash
+        run: |
+          echo "Installing CycloneDX .NET CLI tool..."
+          dotnet tool install --global CycloneDX || dotnet tool update --global CycloneDX
+          mkdir -p ./sbom
+          dotnet CycloneDX EDA-Reference-Portfolio.slnx -o ./sbom -fn sbom.cdx.json -j -v
+          ls -la ./sbom/
+
+      - name: Upload SBOM Compliance Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-artifact
+          path: ./sbom/sbom.cdx.json
+          retention-days: 30
+
+      - name: Run Domain & Platform Unit Tests
+        run: dotnet test EDA-Reference-Portfolio.slnx -c Release --no-build --filter "Category!=Integration"
+
+  phase-2-agentic-review:
+    name: Phase 2 - Agentic Evaluator-Optimizer Architecture & Security Review
+    needs: [phase-1-hard-gates]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Source Code (PR Head Branch)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
+          fetch-depth: 0
+
+      - name: Setup Python 3.11+
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Setup .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Install Python Dependencies
+        run: pip install anthropic
+
+      - name: Execute Agentic Code Reviewer (Evaluator-Optimizer Loop)
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_BASE_REF: ${{ github.base_ref || 'main' }}
+          GITHUB_HEAD_REF: ${{ github.head_ref || github.ref_name }}
+        run: python3 .github/scripts/ai_code_reviewer.py
+
+      - name: Commit & Push Verified Auto-Fixes (If Any)
+        shell: bash
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "Auto-fixes detected. Committing verified changes..."
+            git config user.name "NEAI-CodeReview-Bot"
+            git config user.email "neai-bot@enterprise.internal"
+            git add .
+            git commit -m "chore(ai-review): apply verified architectural & security fixes [skip ci]"
+            git push origin HEAD:${{ github.head_ref || github.ref_name }}
+          else
+            echo "No file changes to commit."
+          fi
+
+      - name: Post Governance Review Report as PR Comment
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            if (fs.existsSync('ai_review_report.md')) {
+              const report = fs.readFileSync('ai_review_report.md', 'utf8');
+              const { data: comments } = await github.rest.issues.listComments({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+              });
+              
+              const botComment = comments.find(comment => 
+                comment.body.includes('Reporte de Gobernanza Agéntica, Calidad de Arquitectura y Seguridad')
+              );
+
+              if (botComment) {
+                await github.rest.issues.updateComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: botComment.id,
+                  body: report
+                });
+              } else {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.issue.number,
+                  body: report
+                });
+              }
+            }
+
+      - name: Upload AI Review Report Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-review-report
+          path: |
+            ai_review_report.md
+            ai_review_report.json
+          retention-days: 30

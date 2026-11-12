@@ -7,6 +7,9 @@
     <ProjectReference Include="..\OrderService.Domain\OrderService.Domain.csproj" />
     <ProjectReference Include="..\OrderService.Application\OrderService.Application.csproj" />
     <ProjectReference Include="..\OrderService.Infrastructure\OrderService.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\platform\BuildingBlocks.Observability\BuildingBlocks.Observability.csproj" />
+    <ProjectReference Include="..\..\platform\BuildingBlocks.Resilience\BuildingBlocks.Resilience.csproj" />
+    <ProjectReference Include="..\..\platform\BuildingBlocks.Security\BuildingBlocks.Security.csproj" />
   </ItemGroup>
 
   <ItemGroup>

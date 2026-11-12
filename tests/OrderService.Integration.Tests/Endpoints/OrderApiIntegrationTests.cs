@@ -54,7 +54,7 @@ public sealed class OrderApiIntegrationTests
         using var scope = _fixture.Services.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<OrderDbContext>();
 
-        var order = await dbContext.Orders.Include(o => o.Items).FirstOrDefaultAsync(o => o.Id.Value == orderId);
+        var order = await dbContext.Orders.Include(o => o.Items).FirstOrDefaultAsync(o => o.Id == OrderService.Domain.ValueObjects.OrderId.From(orderId));
         order.Should().NotBeNull();
         order!.TotalAmount.Amount.Should().Be(105.00m);
         order.Items.Should().HaveCount(2);

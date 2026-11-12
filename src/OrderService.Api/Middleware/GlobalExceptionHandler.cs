@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using BuildingBlocks.Observability;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using OrderService.Application.Exceptions;

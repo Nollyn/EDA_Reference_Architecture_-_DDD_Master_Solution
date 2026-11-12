@@ -99,24 +99,31 @@ public sealed class OrderQueries : IOrderQueries
                 o.status AS Status,
                 o.total_amount AS TotalAmount,
                 o.total_currency AS Currency,
-                COUNT(i.id) AS TotalItems,
+                CAST(COUNT(i.id) AS integer) AS TotalItems,
                 o.created_at AS CreatedAt
             FROM orders o
             LEFT JOIN order_items i ON o.id = i.order_id
-            WHERE (@CursorCreatedAt IS NULL OR (o.created_at < @CursorCreatedAt) OR (o.created_at = @CursorCreatedAt AND o.id < @CursorId))
+            WHERE (@CursorCreatedAt::timestamptz IS NULL OR (o.created_at < @CursorCreatedAt) OR (o.created_at = @CursorCreatedAt AND o.id < @CursorId::uuid))
             GROUP BY o.id, o.customer_id, o.status, o.total_amount, o.total_currency, o.created_at
             ORDER BY o.created_at DESC, o.id DESC
             LIMIT @Limit;
             """;
 
-        var parameters = new
-        {
-            CursorCreatedAt = cursorCreatedAt,
-            CursorId = cursorId,
-            Limit = limit
-        };
+        var parameters = new DynamicParameters();
+        parameters.Add("CursorCreatedAt", cursorCreatedAt, DbType.DateTimeOffset);
+        parameters.Add("CursorId", cursorId, DbType.Guid);
+        parameters.Add("Limit", limit, DbType.Int32);
 
-        var rows = (await connection.QueryAsync<OrderSummaryDto>(new CommandDefinition(sql, parameters, cancellationToken: cancellationToken))).ToList();
+        var rawRows = (await connection.QueryAsync<dynamic>(new CommandDefinition(sql, parameters, cancellationToken: cancellationToken))).ToList();
+
+        var rows = rawRows.Select(r => new OrderSummaryDto(
+            (Guid)r.id,
+            (Guid)r.customerid,
+            (string)r.status,
+            (decimal)r.totalamount,
+            (string)r.currency,
+            (int)r.totalitems,
+            (DateTimeOffset)r.createdat)).ToList();
 
         var hasNextPage = rows.Count > pageSize;
         var items = hasNextPage ? rows.Take(pageSize).ToList() : rows;

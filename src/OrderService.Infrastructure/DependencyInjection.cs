@@ -1,11 +1,9 @@
+using BuildingBlocks.Observability;
+using BuildingBlocks.Resilience;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Http.Resilience;
 using Npgsql;
-using OpenTelemetry.Metrics;
-using OpenTelemetry.Resources;
-using OpenTelemetry.Trace;
 using OrderService.Application.Ports;
 using OrderService.Domain.Repositories;
 using OrderService.Infrastructure.ExternalServices;
@@ -16,7 +14,6 @@ using OrderService.Infrastructure.Observability;
 using OrderService.Infrastructure.Persistence;
 using OrderService.Infrastructure.Persistence.Queries;
 using OrderService.Infrastructure.Persistence.Repositories;
-using Polly;
 
 namespace OrderService.Infrastructure;
 
@@ -52,7 +49,7 @@ public static class DependencyInjection
         services.AddScoped<IRabbitMqTopologyInitializer, RabbitMqTopologyInitializer>();
         services.AddSingleton<IRabbitMqInboxConsumer, RabbitMqInboxConsumer>();
 
-        // Resilient HTTP Client (Polly v8) for Fraud Check
+        // Resilient HTTP Client using Platform Resilience BuildingBlock
         services.AddHttpClient<IFraudCheckService, FraudCheckService>(client =>
         {
             var fraudServiceUrl = configuration["ExternalServices:FraudCheckUrl"];
@@ -62,53 +59,16 @@ public static class DependencyInjection
             }
             client.Timeout = TimeSpan.FromSeconds(10);
         })
-        .AddStandardResilienceHandler(options =>
-        {
-            options.Retry.MaxRetryAttempts = 3;
-            options.Retry.BackoffType = DelayBackoffType.Exponential;
-            options.Retry.Delay = TimeSpan.FromMilliseconds(500);
-            options.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(30);
-            options.CircuitBreaker.FailureRatio = 0.5;
-            options.CircuitBreaker.MinimumThroughput = 5;
-            options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(3);
-            options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(10);
-        });
+        .AddPlatformHttpResilience(configuration, "Resilience:FraudCheck");
 
-        // OpenTelemetry
-        var otlpEndpoint = configuration["OpenTelemetry:OtlpEndpoint"] ?? "http://localhost:4317";
-
-        services.AddOpenTelemetry()
-            .ConfigureResource(resource => resource.AddService(
-                serviceName: Telemetry.ServiceName,
-                serviceVersion: Telemetry.ServiceVersion))
-            .WithTracing(tracing =>
+        // Platform OpenTelemetry Observability
+        services.AddPlatformObservability(
+            configuration,
+            defaultServiceName: Telemetry.ServiceName,
+            configure: options =>
             {
-                tracing
-                    .AddSource(Telemetry.ServiceName)
-                    .AddAspNetCoreInstrumentation(o =>
-                    {
-                        o.RecordException = true;
-                    })
-                    .AddHttpClientInstrumentation(o =>
-                    {
-                        o.RecordException = true;
-                    })
-                    .AddNpgsql()
-                    .AddOtlpExporter(o =>
-                    {
-                        o.Endpoint = new Uri(otlpEndpoint);
-                    });
-            })
-            .WithMetrics(metrics =>
-            {
-                metrics
-                    .AddMeter(Telemetry.ServiceName)
-                    .AddAspNetCoreInstrumentation()
-                    .AddHttpClientInstrumentation()
-                    .AddOtlpExporter(o =>
-                    {
-                        o.Endpoint = new Uri(otlpEndpoint);
-                    });
+                options.AdditionalSources.Add(Telemetry.ServiceName);
+                options.AdditionalMeters.Add(Telemetry.ServiceName);
             });
 
         return services;
