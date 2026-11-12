@@ -1,4 +1,9 @@
 <Solution>
+  <Folder Name="/platform/">
+    <Project Path="platform/BuildingBlocks.Observability/BuildingBlocks.Observability.csproj" />
+    <Project Path="platform/BuildingBlocks.Resilience/BuildingBlocks.Resilience.csproj" />
+    <Project Path="platform/BuildingBlocks.Security/BuildingBlocks.Security.csproj" />
+  </Folder>
   <Folder Name="/src/">
     <Project Path="src/OrderService.Api/OrderService.Api.csproj" />
     <Project Path="src/OrderService.Application/OrderService.Application.csproj" />

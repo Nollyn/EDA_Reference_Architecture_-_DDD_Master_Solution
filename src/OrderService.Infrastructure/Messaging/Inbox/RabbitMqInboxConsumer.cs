@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using BuildingBlocks.Observability;
 using OrderService.Application.Commands;
 using OrderService.Application.Common;
 using OrderService.Application.Events;

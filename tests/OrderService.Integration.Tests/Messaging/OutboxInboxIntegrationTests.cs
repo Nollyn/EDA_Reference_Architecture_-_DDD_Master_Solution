@@ -20,6 +20,7 @@ using Xunit;
 namespace OrderService.Integration.Tests.Messaging;
 
 [Collection("IntegrationTests")]
+[Trait("Category", "Integration")]
 public sealed class OutboxInboxIntegrationTests
 {
     private readonly IntegrationTestFixture _fixture;

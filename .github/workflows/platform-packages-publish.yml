@@ -1,0 +1,78 @@
+name: Publish Platform BuildingBlocks Packages
+
+on:
+  push:
+    tags:
+      - 'platform-v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Semantic Version for Platform Packages (e.g., 1.0.1)'
+        required: true
+        default: '1.0.0'
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish-platform-packages:
+    name: Build, Pack & Publish BuildingBlocks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+          cache: true
+
+      - name: Determine Package Version
+        id: pkg_version
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            TAG_REF="${{ github.ref }}"
+            VERSION="${TAG_REF#refs/tags/platform-v}"
+          fi
+          echo "PACKAGE_VERSION=${VERSION}" >> $GITHUB_ENV
+          echo "Determined Package Version: ${VERSION}"
+
+      - name: Restore Solution Dependencies
+        run: dotnet restore EDA-Reference-Portfolio.slnx
+
+      - name: Build Platform Projects with Zero Warnings
+        run: dotnet build platform/BuildingBlocks.Observability/BuildingBlocks.Observability.csproj platform/BuildingBlocks.Resilience/BuildingBlocks.Resilience.csproj platform/BuildingBlocks.Security/BuildingBlocks.Security.csproj -c Release --warnaserror
+
+      - name: Pack Platform BuildingBlocks
+        run: |
+          mkdir -p ./artifacts
+          dotnet pack platform/BuildingBlocks.Observability/BuildingBlocks.Observability.csproj -c Release -o ./artifacts /p:Version=${{ env.PACKAGE_VERSION }} /p:PackageVersion=${{ env.PACKAGE_VERSION }}
+          dotnet pack platform/BuildingBlocks.Resilience/BuildingBlocks.Resilience.csproj -c Release -o ./artifacts /p:Version=${{ env.PACKAGE_VERSION }} /p:PackageVersion=${{ env.PACKAGE_VERSION }}
+          dotnet pack platform/BuildingBlocks.Security/BuildingBlocks.Security.csproj -c Release -o ./artifacts /p:Version=${{ env.PACKAGE_VERSION }} /p:PackageVersion=${{ env.PACKAGE_VERSION }}
+
+      - name: Upload Packaged Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: platform-nupkg-artifacts
+          path: ./artifacts/*.nupkg
+          retention-days: 14
+
+      - name: Publish NuGet Packages to GitHub Packages
+        shell: bash
+        run: |
+          dotnet nuget add source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" \
+            --name "github-packages-publish" \
+            --username "${{ github.actor }}" \
+            --password "${{ secrets.GITHUB_TOKEN }}" \
+            --store-password-in-clear-text || true
+
+          dotnet nuget push ./artifacts/*.nupkg \
+            --source "github-packages-publish" \
+            --api-key "${{ secrets.GITHUB_TOKEN }}" \
+            --skip-duplicate

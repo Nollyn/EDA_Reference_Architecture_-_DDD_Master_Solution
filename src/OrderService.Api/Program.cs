@@ -1,3 +1,5 @@
+using BuildingBlocks.Observability;
+using BuildingBlocks.Security;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using OrderService.Api.Endpoints;
@@ -13,7 +15,10 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 
-// Error Handling & Correlation
+// Platform Security (JWT Bearer / OIDC / DevMode Bypass)
+builder.Services.AddPlatformAuthentication(builder.Configuration);
+
+// Error Handling & ProblemDetails
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 
@@ -37,7 +42,8 @@ builder.Services.AddHealthChecks()
 var app = builder.Build();
 
 app.UseExceptionHandler();
-app.UseMiddleware<CorrelationIdMiddleware>();
+app.UsePlatformCorrelationId();
+app.UsePlatformSecurity();
 
 if (app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Docker") || app.Environment.IsProduction())
 {

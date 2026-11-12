@@ -1,0 +1,55 @@
+{
+  "timestamp": "2026-11-12T17:06:59.709454+00:00",
+  "model_used": "gemini-3.5-flash",
+  "iterations_run": 1,
+  "max_iterations": 3,
+  "final_status": "REQUIRES_HUMAN_ATTENTION",
+  "summary": "Auditoría estática de arquitectura, BuildingBlocks y seguridad completada con éxito.",
+  "resolved_issues": [],
+  "unresolved_issues": [
+    {
+      "id": "SEC-002",
+      "file_path": "src/OrderService.Api/appsettings.json",
+      "line_number": 1,
+      "severity": "CRITICAL",
+      "category": "Security",
+      "description": "Cadena de conexión de Azure Service Bus hardcodeada.",
+      "is_auto_fixable": false,
+      "suggested_fix": "Mover secretos a Azure Key Vault, User Secrets o variables de entorno.",
+      "fix_status": "MANUAL_REQUIRED"
+    }
+  ],
+  "iterations": [
+    {
+      "iteration_number": 1,
+      "issues_found": [
+        {
+          "id": "SEC-002",
+          "file_path": "src/OrderService.Api/appsettings.json",
+          "line_number": 1,
+          "severity": "CRITICAL",
+          "category": "Security",
+          "description": "Cadena de conexión de Azure Service Bus hardcodeada.",
+          "is_auto_fixable": false,
+          "suggested_fix": "Mover secretos a Azure Key Vault, User Secrets o variables de entorno.",
+          "fix_status": "MANUAL_REQUIRED"
+        },
+        {
+          "id": "SEC-002",
+          "file_path": "src/OrderService.Api/appsettings.json",
+          "line_number": 1,
+          "severity": "CRITICAL",
+          "category": "Security",
+          "description": "Cadena de conexión de Azure Service Bus hardcodeada.",
+          "is_auto_fixable": false,
+          "suggested_fix": "Mover secretos a Azure Key Vault, User Secrets o variables de entorno.",
+          "fix_status": "MANUAL_REQUIRED"
+        }
+      ],
+      "fixes_attempted": [],
+      "build_success": true,
+      "tests_success": true,
+      "build_output": ""
+    }
+  ]
+}
