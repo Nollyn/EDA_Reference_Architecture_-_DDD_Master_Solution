@@ -73,7 +73,7 @@ using (var scope = app.Services.CreateScope())
     catch (Exception ex)
     {
         var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-        logger.LogWarning(ex, "Initial startup migration or topology setup deferred (containers may still be starting).");
+        logger.LogWarning(ex, "Initial startup migration or topology setup deferred (containers may still be starting)");
     }
 }
 
