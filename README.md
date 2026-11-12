@@ -174,14 +174,14 @@ La migración de un módulo crítico de pedidos desde un monolito legado hacia e
 [ Clientes / Web / Mobile ]
            │
            ▼
-┌─────────────────────────────────────────┐
-│ API Gateway / Reverse Proxy (YARP / APIM)│
-└────┬───────────────────────────────┬────┘
+┌───────────────────────────────────────────┐
+│ API Gateway / Reverse Proxy (YARP / APIM) │
+└────┬───────────────────────────────┬──────┘
      │ (Rutas no migradas)           │ (POST /api/v1/orders)
      ▼                               ▼
-┌─────────────────────────┐     ┌───────────────────────────────────┐
-│ Monolito Legado         │     │ OrderService (Nuevo Microservicio)│
-│                         │     └─────────────────┬─────────────────┘
+┌─────────────────────────┐     ┌────────────────────────────────────┐
+│ Monolito Legado         │     │ OrderService (Nuevo Microservicio) │
+│                         │     └─────────────────┬──────────────────┘
 │ ┌─────────────────────┐ │                       │
 │ │ Anti-Corruption     │ │◄──────────────────────┘
 │ │ Layer (ACL) Adapter │ │  Eventos: OrderCreated, OrderCancelled
@@ -226,7 +226,7 @@ La migración de un módulo crítico de pedidos desde un monolito legado hacia e
 ├───────────────────────────────┬─────────────────────────────────────────────┤
 │ Deployment Frequency (DF)     │ Elite: Múltiples despliegues diarios        │
 │ Lead Time for Changes (LTTC)  │ Elite: < 1 hora (commit a producción)       │
-│ Change Failure Rate (CFR)     │ Elite: < 2% (Invariantes DDD + Polly v8)   │
+│ Change Failure Rate (CFR)     │ Elite: < 2% (Invariantes DDD + Polly v8)    │
 │ Mean Time to Recovery (MTTR)  │ Elite: < 5 minutos (OTel Traces + DLQ)      │
 └───────────────────────────────┴─────────────────────────────────────────────┘
 ```
