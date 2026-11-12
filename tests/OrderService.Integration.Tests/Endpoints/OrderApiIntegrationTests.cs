@@ -14,6 +14,7 @@ using Xunit;
 namespace OrderService.Integration.Tests.Endpoints;
 
 [Collection("IntegrationTests")]
+[Trait("Category", "Integration")]
 public sealed class OrderApiIntegrationTests
 {
     private readonly IntegrationTestFixture _fixture;

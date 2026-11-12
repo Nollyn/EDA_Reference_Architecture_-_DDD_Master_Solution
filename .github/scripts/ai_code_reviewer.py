@@ -128,14 +128,14 @@ class AgenticCodeReviewer:
         self,
         base_branch: str = "main",
         max_iterations: int = 3,
-        model_name: str = "claude-3-7-sonnet-latest",
+        model_name: str = "gemini-3.5-flash",
         repo_root: Optional[Path] = None,
     ) -> None:
         self.base_branch = base_branch
         self.max_iterations = max_iterations
         self.model_name = model_name
         self.repo_root = repo_root or Path.cwd()
-        self.api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+        self.api_key = os.environ.get("GEMINI_API_KEY", "").strip()
 
     def get_git_diff(self) -> str:
         """Obtains the current git diff against base branch or HEAD."""
@@ -178,10 +178,10 @@ class AgenticCodeReviewer:
         return "\n".join(snippets[:10])
 
     def run_dotnet_build(self) -> tuple[bool, str]:
-        """Executes dotnet build --warnaserror on the solution."""
+        """Executes dotnet build EDA-Reference-Portfolio.slnx --warnaserror on the solution."""
         try:
             res = subprocess.run(
-                ["dotnet", "build", "--warnaserror"],
+                ["dotnet", "build", "EDA-Reference-Portfolio.slnx", "--warnaserror"],
                 cwd=self.repo_root,
                 capture_output=True,
                 text=True,
@@ -195,7 +195,7 @@ class AgenticCodeReviewer:
         """Executes domain unit tests with dotnet test."""
         try:
             res = subprocess.run(
-                ["dotnet", "test", "--filter", "FullyQualifiedName~Domain"],
+                ["dotnet", "test", "tests/OrderService.Domain.Tests/OrderService.Domain.Tests.csproj"],
                 cwd=self.repo_root,
                 capture_output=True,
                 text=True,

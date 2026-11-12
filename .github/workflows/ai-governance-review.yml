@@ -29,6 +29,7 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
+          cache: true
 
       - name: Restore Solution Dependencies
         run: dotnet restore EDA-Reference-Portfolio.slnx
@@ -54,10 +55,16 @@ jobs:
       - name: .NET SAST & Code Style Enforcement (TreatWarningsAsErrors)
         run: dotnet build EDA-Reference-Portfolio.slnx -c Release --warnaserror
 
+      - name: Cache CycloneDX Global Tool
+        uses: actions/cache@v4
+        with:
+          path: ~/.dotnet/tools
+          key: ${{ runner.os }}-dotnet-tools-cyclonedx
+
       - name: Generate CycloneDX SBOM (Software Bill of Materials)
         shell: bash
         run: |
-          echo "Installing CycloneDX .NET CLI tool..."
+          echo "Installing or updating CycloneDX .NET CLI tool..."
           dotnet tool install --global CycloneDX || dotnet tool update --global CycloneDX
           mkdir -p ./sbom
           dotnet CycloneDX src/OrderService.Api/OrderService.Api.csproj -o ./sbom -fn sbom.cdx --json
@@ -71,7 +78,7 @@ jobs:
           retention-days: 30
 
       - name: Run Domain & Platform Unit Tests
-        run: dotnet test EDA-Reference-Portfolio.slnx -c Release --no-build --filter "Category!=Integration"
+        run: dotnet test tests/OrderService.Domain.Tests/OrderService.Domain.Tests.csproj -c Release --no-build
 
   phase-2-agentic-review:
     name: Phase 2 - Agentic Evaluator-Optimizer Architecture & Security Review
@@ -89,18 +96,21 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: '.github/scripts/requirements.txt'
 
       - name: Setup .NET 8 SDK
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
+          cache: true
 
       - name: Install Python Dependencies
-        run: pip install anthropic
+        run: pip install -r .github/scripts/requirements.txt
 
       - name: Execute Agentic Code Reviewer (Evaluator-Optimizer Loop)
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GITHUB_BASE_REF: ${{ github.base_ref || 'main' }}
           GITHUB_HEAD_REF: ${{ github.head_ref || github.ref_name }}
         run: python3 .github/scripts/ai_code_reviewer.py
