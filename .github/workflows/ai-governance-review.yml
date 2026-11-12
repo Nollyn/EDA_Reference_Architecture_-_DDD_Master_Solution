@@ -60,7 +60,7 @@ jobs:
           echo "Installing CycloneDX .NET CLI tool..."
           dotnet tool install --global CycloneDX || dotnet tool update --global CycloneDX
           mkdir -p ./sbom
-          dotnet CycloneDX EDA-Reference-Portfolio.slnx -o ./sbom -fn sbom.cdx.json -j -v
+          dotnet CycloneDX src/OrderService.Api/OrderService.Api.csproj -o ./sbom -fn sbom.cdx --json
           ls -la ./sbom/
 
       - name: Upload SBOM Compliance Artifact
